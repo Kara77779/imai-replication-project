@@ -1,0 +1,183 @@
+---
+title: "Week 1 — Replication Notes (Imai, Horiuchi & Taniguchi 2007 AJPS)"
+author: "Cara"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: cosmo     
+    toc: true
+    toc_depth: 2
+    number_sections: false  
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+library(knitr)
+library(kableExtra) 
+library(tidyverse)
+library(coda)
+library(xtable)
+```
+
+# Background Summary
+
+Research Question: During the 2004 Japanese Upper House election, does encouraging voters to visit party websites increase policy awareness and voting intentions?
+
+Design: Respondents were randomly assigned into treatment (encouraged to visit websites) and control groups, with additional covariates collected for precision and to handle noncompliance and attrition.
+
+Key Finding: The encouragement significantly improved policy awareness. Treatment effects were heterogeneous across subgroups.
+
+# Environment and Data Paths
+```{r paths-and-libs}
+proj_dir <- "~/Documents/ima"             
+data_dir <- file.path(proj_dir, "data")   
+stopifnot(dir.exists(data_dir))
+
+pkgs <- c("tidyverse","coda","xtable","knitr")
+to_install <- setdiff(pkgs, rownames(installed.packages()))
+if (length(to_install)) install.packages(to_install)
+lapply(pkgs, library, character.only = TRUE)
+```
+
+
+# Reproducing the Authors’ Results
+```{r reproduce}
+old <- getwd(); setwd(data_dir)
+source("table.R")
+source("table2.R")
+source("figure3.R")
+setwd(old)
+```
+
+# Replication of Table 2
+
+The following table reproduces the authors’ Table 2, showing ITT and CACE estimates.
+```{r table2_print22, results='asis', echo=FALSE}
+cat("<h4>Raw output</h4>")
+cat("<pre>")
+cat(readLines(file.path(data_dir, "table.out")), sep = "\n")
+cat("</pre>")
+```
+
+```{r table2_clean33, results='asis',echo=FALSE}
+cat("<h4>Formatted table</h4>")
+path2 <- file.path(data_dir, "table.out")
+
+# Try 1: parse as a delimited table directly
+ok <- FALSE
+df <- NULL
+try({
+  df <- read.delim(path2, header = TRUE, sep = "", check.names = FALSE)
+  # require at least 2 columns to treat as a table
+  if (is.data.frame(df) && ncol(df) >= 2) ok <- TRUE
+}, silent = TRUE)
+
+# Try 2: if LaTeX tabular block exists, extract & parse it
+if (!ok) {
+  lines <- readLines(path2, warn = FALSE)
+  b <- grep("\\\\begin\\{tabular\\}", lines)
+  e <- grep("\\\\end\\{tabular\\}",   lines)
+  if (length(b) && length(e)) {
+    i1 <- b[1] + 2
+    i2 <- e[1] - 1
+    rows <- lines[i1:i2]
+    rows <- gsub("\\\\hline|\\\\\\\\", "", rows)
+    rows <- trimws(rows)
+    rows <- rows[nzchar(rows)]
+    mat  <- try(do.call(rbind, strsplit(rows, "&", fixed = TRUE)), silent = TRUE)
+    if (!inherits(mat, "try-error")) {
+      mat  <- apply(mat, 2, trimws)
+      df   <- as.data.frame(mat, stringsAsFactors = FALSE)
+      names(df) <- df[1, ]; df <- df[-1, , drop = FALSE]
+      ok <- TRUE
+    }
+  }
+}
+
+if (ok) {
+  # Display nicely
+  knitr::kable(df, "html", caption = "Replication of Table 2") |>
+    kableExtra::kable_styling(
+      bootstrap_options = c("striped","condensed","hover"),
+      full_width = FALSE, position = "center"
+    )
+} else {
+  cat("<em>Could not parse <code>table.out</code> into a structured table. Showing raw output above.</em>")
+}
+```  
+
+# Replication of Table 3
+
+The following table corresponds to Table 3, subgroup analyses of treatment effects.
+
+```{r table3_print, results='asis',echo=FALSE}
+cat("<h4>Raw output</h4>")
+cat("<pre>")
+cat(readLines(file.path(data_dir, "table2.out")), sep = "\n")
+cat("</pre>")
+```
+
+```{r table3_print2, results='asis',echo=FALSE}
+cat("<h4>Formatted table</h4>")
+path3 <- file.path(data_dir, "table2.out")
+
+ok3 <- FALSE
+df3 <- NULL
+try({
+  df3 <- read.delim(path3, header = TRUE, sep = "", check.names = FALSE)
+  if (is.data.frame(df3) && ncol(df3) >= 2) ok3 <- TRUE
+}, silent = TRUE)
+
+if (!ok3) {
+  lines3 <- readLines(path3, warn = FALSE)
+  b3 <- grep("\\\\begin\\{tabular\\}", lines3)
+  e3 <- grep("\\\\end\\{tabular\\}",   lines3)
+  if (length(b3) && length(e3)) {
+    i1 <- b3[1] + 2
+    i2 <- e3[1] - 1
+    rows <- lines3[i1:i2]
+    rows <- gsub("\\\\hline|\\\\\\\\", "", rows)
+    rows <- trimws(rows)
+    rows <- rows[nzchar(rows)]
+    mat  <- try(do.call(rbind, strsplit(rows, "&", fixed = TRUE)), silent = TRUE)
+    if (!inherits(mat, "try-error")) {
+      mat  <- apply(mat, 2, trimws)
+      df3  <- as.data.frame(mat, stringsAsFactors = FALSE)
+      names(df3) <- df3[1, ]; df3 <- df3[-1, , drop = FALSE]
+      ok3 <- TRUE
+    }
+  }
+}
+
+if (ok3) {
+  knitr::kable(df3, "html", caption = "Replication of Table 3") |>
+    kableExtra::kable_styling(
+      bootstrap_options = c("striped","condensed","hover"),
+      full_width = FALSE, position = "center"
+    )
+} else {
+  cat("<em>Could not parse <code>table2.out</code> into a structured table. Showing raw output above.</em>")
+}
+```
+
+# Replication of Figure 3
+
+The figure below reproduces Figure 3, showing heterogeneous treatment effects (simulated data vs. Japanese election data).
+
+```{r fig3, out.width='70%', fig.align='center', fig.cap='Replication of Figure 3 (Heterogeneous Effects)', echo=FALSE}
+knitr::include_graphics(file.path(data_dir, "figure", "figure3.pdf"))
+```
+
+# Conclusion and Next Steps
+
+Successfully replicated Table 2, Table 3, and Figure 3 from Imai, Horiuchi, & Taniguchi (2007 AJPS).
+
+Results are consistent with the published paper: encouragement increased policy awareness and effects varied across groups.
+
+# Next steps
+
+Cross-check numbers with the original article to discuss any discrepancies (rounding, random seeds, software versions).
+
+Conduct robustness checks or extend with additional visualizations.
