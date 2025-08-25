@@ -14,19 +14,27 @@ The goal of this project is to **systematically replicate** the tables and figur
 ---
 
 ## 📂 Contents
-- `week1_report.Rmd`: R Markdown document replicating Tables 2, 3, and Figure 3.  
-- `week1_report.html`: Compiled HTML output of the replication report.  
+- `day1_report.Rmd` / `day1_report.html`: Replication of baseline results (Tables 2, 3, and Figure 3).  
+- `day2_report.Rmd` / `day2_report.html`: Replication of subgroup analyses and robustness checks (S1, S2).  
 - `data/`: Includes original replication data and R scripts (`table.R`, `table2.R`, `figure3.R`).  
 - `.gitignore`: Ensures only relevant replication files are tracked.  
 
 ---
 
 ## ✅ Progress
+
+**Day 1**  
 - Successfully reproduced:
   - **Table 2** (ITT and CACE estimates)  
   - **Table 3** (subgroup analyses)  
   - **Figure 3** (heterogeneous treatment effects)  
 - Organized outputs in both `.Rmd` and `.html` formats for reproducibility.
+
+**Day 2**  
+- Extended replication with robustness checks:
+  - **S1**: Alternative definitions of treatment receipt (visited, logged-in, completed).  
+  - **S2**: Sensitivity to missing outcome assumptions (complete-case, worst-case, best-case, multiple imputation).  
+- Results confirm robustness of the original findings.
 
 ---
 
@@ -45,7 +53,7 @@ My name is **Cara Li**, an incoming **MBA student at Harvard Business School (Cl
 - **B.A. in Economics (Statistics concentration), Peking University**  
 - **Schwarzman Scholar, Tsinghua University**  
 - **Goldman Sachs**, Investment Banking  
-- **Zhipu AI **, Researcher (worked on AI agent and LLM applications)  
+- **Zhipu AI**, Researcher (worked on AI agent and LLM applications)  
 
 I have a strong interest in **causal inference, experimental design, and the intersection of governance and technology**.  
 
