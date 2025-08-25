@@ -9,13 +9,13 @@ American Journal of Political Science, 51(3): 669–687.**
 ---
 
 ## 🎯 Objective
-The goal of this project is to **systematically replicate** the tables and figures in the AJPS 2007 article and extend the analysis with additional robustness checks and subgroup analyses.
+The goal of this project is to **systematically replicate** the tables and figures in the AJPS 2007 article and extend the analysis with additional robustness checks.
 
 ---
 
 ## 📂 Contents
 - `day1_report.Rmd` / `day1_report.html`: Replication of baseline results (Tables 2, 3, and Figure 3).  
-- `day2_report.Rmd` / `day2_report.html`: Replication of subgroup analyses and robustness checks (S1, S2).  
+- `day2_report.Rmd` / `day2_report.html`: Robustness checks (S1, S2).  
 - `data/`: Includes original replication data and R scripts (`table.R`, `table2.R`, `figure3.R`).  
 - `.gitignore`: Ensures only relevant replication files are tracked.  
 
@@ -24,31 +24,31 @@ The goal of this project is to **systematically replicate** the tables and figur
 ## ✅ Progress
 
 **Day 1**  
-- Successfully reproduced:
+- Reproduced core results from the AJPS 2007 article:  
   - **Table 2** (ITT and CACE estimates)  
   - **Table 3** (subgroup analyses)  
   - **Figure 3** (heterogeneous treatment effects)  
 - Organized outputs in both `.Rmd` and `.html` formats for reproducibility.
 
 **Day 2**  
-- Extended replication with robustness checks:
-  - **S1**: Alternative definitions of treatment receipt (visited, logged-in, completed).  
+- Extended replication with robustness checks (Section 4 of the paper):  
+  - **S1**: Alternative definitions of treatment receipt (visited / logged-in / completed).  
   - **S2**: Sensitivity to missing outcome assumptions (complete-case, worst-case, best-case, multiple imputation).  
-- Results confirm robustness of the original findings.
+- Results confirm that the main findings are robust to both treatment receipt definitions and missingness assumptions.
 
 ---
 
-## 🔜 Next Steps
-- Replicate **Bayesian/SAFE models** presented in the appendix of the AJPS 2007 article.  
-- Extend robustness checks to include **sensitivity analyses under different assumptions** (e.g., Latent Ignorability, Non-Ignorable missingness).  
-- Generalize the current R scripts into a **replication template** (functions + workflow) that can be reused for other experiments.  
-- Write a short **methodological note** documenting challenges (e.g., column naming, missingness handling, random seeds) and how they were resolved.  
-
+## 🔜 Next Steps (Day 3 Plan)
+- Replicate **Bayesian/SAFE models** presented in the appendix.  
+- Extend robustness checks to include **alternative missing-data assumptions** (e.g., Latent Ignorability, Non-Ignorable missingness).  
+- Generalize the R scripts into a **replication template** for other experiments.  
+- Write a **methodological note** documenting challenges (column naming, missingness handling, random seeds) and solutions.  
+- Plan for **Day 4**: replicate and extend to more recent Imai papers, connecting classic methods (2007) to modern developments.
 
 ---
 
 ## 👩‍🎓 About Me
-My name is **Cara Li**, an **MBA student at Harvard Business School (Class of 2027)**.  
+My name is **Cara Li**, an incoming **MBA student at Harvard Business School (Class of 2027)**.  
 
 **Background**:
 - **B.A. in Economics (Statistics concentration), Peking University**  
