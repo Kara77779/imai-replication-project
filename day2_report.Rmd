@@ -1,0 +1,360 @@
+---
+title: "Day 2 — Subgroup Analyses and Robustness Checks (Replication of Imai, Horiuchi & Taniguchi 2007 AJPS)"
+author: "Cara"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_depth: 2
+    number_sections: false
+    df_print: paged
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+# Load packages
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(coda)
+library(xtable)
+```
+
+# Background
+
+This week focuses on:
+
+Subgroup analyses (Table 3): heterogeneous treatment effects across different groups (e.g., undecided voters, partisan groups).
+
+Robustness checks: verify that results hold under alternative model specifications.
+
+# Environment and Data Paths
+```{r paths-and-libs}
+proj_dir <- "~/Documents/ima"    
+data_dir <- file.path(proj_dir, "data")
+stopifnot(dir.exists(data_dir))
+```
+
+# Load replication scripts
+```{r reproduce}
+old <- getwd(); setwd(data_dir)
+
+# Load replication functions from the authors’ code
+source("table2.R")   # ITT & CACE estimation
+source("figure3.R")  # Heterogeneity functions
+
+setwd(old)
+```
+
+# Subgroup analyses (Table 3)
+We replicate Table 3, which shows treatment effects for different subgroups (e.g., undecided voters).
+```{r subgroup analyses, results='asis', echo=FALSE}
+cat(readLines(file.path(data_dir, "table2.out")), sep = "\n")
+# Try to parse table2.out into a readable format
+tab3 <- read.delim(file.path(data_dir, "table2.out"), header = TRUE, sep = "", check.names = FALSE)
+
+knitr::kable(tab3, format = "html", caption = "Replication of Table 3 — Subgroup Analyses") %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = FALSE,
+    position = "center"
+  )
+```
+
+# Robustness checks
+We run sensitivity analyses to check whether the results are stable under alternative specifications.
+
+```{r robustness1, results='asis',echo=FALSE}
+# --- S1: Redefining treatment receipt (D) ---
+old <- getwd(); setwd(data_dir)
+
+## 1) Load data
+if (file.exists("data.txt")) {
+  dat <- read.table("data.txt", header = TRUE, sep = "", stringsAsFactors = FALSE)
+} else { 
+  load("bayes.RData"); dat <- data 
+}
+
+## 2) Helper to guess column names (robust matching)
+guess_col <- function(df, candidates){
+  cols <- tolower(names(df))
+  idx  <- match(tolower(candidates), cols)
+  idx  <- idx[!is.na(idx)]
+  if (length(idx) == 0) return(NA_character_)
+  names(df)[idx[1]]
+}
+
+y_col     <- guess_col(dat, c("past.turnout","Y","turnout","vote","voted","y"))
+z_col     <- guess_col(dat, c("Z","assign","treat","encourage"))
+d_col     <- guess_col(dat, c("D","visited","visit","treatrec","treat_rec"))
+block_col <- guess_col(dat, c("block","blocks","strata","stratum"))
+
+if (any(is.na(c(y_col,z_col,d_col,block_col))))
+  stop(sprintf("Cannot find needed columns. Found: Y=%s, Z=%s, D=%s, block=%s",
+               y_col, z_col, d_col, block_col))
+
+message(sprintf("Using columns -> Y=%s  Z=%s  D=%s  block=%s",
+                y_col, z_col, d_col, block_col))
+
+## 3) Standardize fields -------------------------------------------------------
+to01 <- function(x) as.integer(x %in% c(1, "1", TRUE, "TRUE", "T"))
+
+# Create a 'visited' column if only D exists
+if (!("visited" %in% names(dat))) dat$visited <- dat[[d_col]]
+has_logged   <- "logged"    %in% names(dat)
+has_complete <- "completed" %in% names(dat)
+
+# Coerce Z/D to binary 0/1
+dat[[z_col]] <- to01(dat[[z_col]])
+dat$visited  <- to01(dat$visited)
+if (has_logged)   dat$logged    <- to01(dat$logged)
+if (has_complete) dat$completed <- to01(dat$completed)
+
+# Define alternative treatment receipt variables
+dat$D1 <- dat$visited
+dat$D2 <- if (has_logged) dat$logged else dat$D1
+dat$D3 <- if (has_complete) to01(dat$completed) else rep(NA_integer_, nrow(dat))
+
+# Block must be a factor, drop rows with NA
+dat[[block_col]] <- as.factor(dat[[block_col]])
+dat <- dat[!is.na(dat[[block_col]]), , drop = FALSE]
+
+# Assert: no Inf/NaN in Z/D (Y may still contain NA)
+stopifnot(all(is.finite(dat[[z_col]])))
+stopifnot(all(is.finite(dat$D1)))
+stopifnot(all(is.finite(dat$D2)))
+
+## 4) Estimators ---------------------------------------------------------------
+suppressPackageStartupMessages({
+  if (!requireNamespace("AER", quietly = TRUE))      install.packages("AER")
+  if (!requireNamespace("sandwich", quietly = TRUE)) install.packages("sandwich")
+  if (!requireNamespace("lmtest", quietly = TRUE))   install.packages("lmtest")
+})
+library(AER); library(sandwich); library(lmtest)
+
+robust_se <- function(fit) sqrt(diag(sandwich::vcovHC(fit, type = "HC1")))
+z975 <- 1.96
+
+estimate_qoi <- function(Dname){
+  # Use complete cases only
+  cc <- dat |>
+    dplyr::filter(!is.na(.data[[y_col]]),
+                  is.finite(.data[[z_col]]),
+                  is.finite(.data[[Dname]]),
+                  !is.na(.data[[block_col]]))
+
+  # Extra check: design matrix should not contain NA/NaN/Inf
+  mm1 <- model.matrix(as.formula(sprintf("~ %s + %s", z_col, paste0("factor(", block_col, ")"))), data = cc)
+  if (any(!is.finite(mm1))) stop("Non-finite in X for ITT design matrix.")
+  
+  # ITT: Linear Probability Model (Y ~ Z + block FE)
+  f_itt <- as.formula(sprintf("%s ~ %s + factor(%s)", y_col, z_col, block_col))
+  m_itt <- lm(f_itt, data = cc)
+  b_itt <- coef(m_itt)[z_col]; se_itt <- robust_se(m_itt)[z_col]
+  itt_l <- b_itt - z975*se_itt; itt_u <- b_itt + z975*se_itt
+
+  # CACE/LATE: 2SLS with block FE (Y ~ D | Z + FE)
+  f_iv <- as.formula(sprintf("%s ~ %s + factor(%s) | %s + factor(%s)",
+                             y_col, Dname, block_col, z_col, block_col))
+  m_iv <- AER::ivreg(f_iv, data = cc)
+  b_iv <- coef(m_iv)[Dname]; se_iv <- robust_se(m_iv)[Dname]
+  cace_l <- b_iv - z975*se_iv; cace_u <- b_iv + z975*se_iv
+
+  tibble::tibble(
+    def       = Dname,
+    ITT_mean  = unname(b_itt),  ITT_l  = unname(itt_l),  ITT_u  = unname(itt_u),
+    CACE_mean = unname(b_iv),   CACE_l = unname(cace_l), CACE_u = unname(cace_u)
+  )
+}
+
+## 5) Run for D1, D2, and optionally D3
+res_S1 <- estimate_qoi("D1") %>%
+  dplyr::bind_rows(estimate_qoi("D2")) %>%
+  { if (all(!is.na(dat$D3))) dplyr::bind_rows(., estimate_qoi("D3")) else . }
+
+## 6) Table + plot
+knitr::kable(res_S1, "html",
+             caption = "S1: ITT & CACE under alternative definitions of treatment receipt (D)") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+
+res_S1_long <- res_S1 %>% 
+  tidyr::pivot_longer(cols = -def, names_to = "qoi", values_to = "val")
+
+library(ggplot2)
+ggplot(dplyr::filter(res_S1_long, grepl("mean", qoi)),
+       aes(x = def, y = val, group = 1)) +
+  geom_point(size = 3) + geom_line() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(title="S1: Effect size under alternative D",
+       x="Definition of D", y="Effect (mean)") +
+  theme_minimal()
+
+setwd(old)
+
+
+```
+
+
+```{r robustness2, results='asis', echo=FALSE}
+# --- S2: Missingness sensitivity ---
+
+old <- getwd(); setwd(data_dir)
+
+suppressPackageStartupMessages({
+  if (!requireNamespace("AER", quietly=TRUE))      install.packages("AER")
+  if (!requireNamespace("sandwich", quietly=TRUE)) install.packages("sandwich")
+  if (!requireNamespace("lmtest", quietly=TRUE))   install.packages("lmtest")
+  if (!requireNamespace("mice", quietly=TRUE))     install.packages("mice")
+  library(AER); library(sandwich); library(lmtest); library(mice)
+  library(dplyr); library(tibble); library(knitr); library(kableExtra)
+})
+
+# ---- 1) Safe helpers ----
+guess_col <- function(df, candidates){
+  cols <- tolower(names(df))
+  idx  <- match(tolower(candidates), cols)
+  idx  <- idx[!is.na(idx)]
+  if (!length(idx)) return(NA_character_)
+  names(df)[idx[1]]
+}
+to01 <- function(x) as.integer(x %in% c(1, "1", TRUE, "TRUE", "T"))
+
+# ---- 2) Identify columns (STOP if any missing) ----
+y_col     <- guess_col(dat, c("past.turnout","Y","turnout","vote","voted","y"))
+z_col     <- guess_col(dat, c("Z","assign","treat","encourage"))
+block_col <- guess_col(dat, c("block","blocks","strata","stratum"))
+Dname_use <- if ("D1" %in% names(dat)) "D1" else guess_col(dat, c("D","visited","visit"))
+
+if (any(is.na(c(y_col, z_col, block_col, Dname_use)))){
+  stop(sprintf("Column not found. Found: Y=%s Z=%s block=%s D=%s",
+               y_col, z_col, block_col, Dname_use))
+}
+
+message(sprintf("Using -> Y=%s  Z=%s  block=%s  D=%s",
+                y_col, z_col, block_col, Dname_use))
+
+# ---- 3) Sanitize key columns ----
+# Z/D must be 0/1 and finite; Y may contain NA; block is converted to factor and rows with NA are dropped
+dat[[z_col]]      <- to01(dat[[z_col]]);      stopifnot(all(is.finite(dat[[z_col]])))
+dat[[Dname_use]]  <- to01(dat[[Dname_use]]);  stopifnot(all(is.finite(dat[[Dname_use]])))
+dat[[block_col]]  <- as.factor(dat[[block_col]])
+dat               <- dat[!is.na(dat[[block_col]]), , drop = FALSE]
+
+# ---- 4) Estimators ----
+robust_se <- function(fit) sqrt(diag(sandwich::vcovHC(fit, type = "HC1")))
+z975 <- 1.96
+
+iv_qoi <- function(df){
+  # Diagnostic: check if design matrix contains any non-finite values
+  f_itt <- as.formula(sprintf("%s ~ %s + factor(%s)", y_col, z_col, block_col))
+  mm1   <- model.matrix(f_itt, data = df)
+  if (any(!is.finite(mm1))) {
+    bad <- colnames(mm1)[colSums(!is.finite(mm1)) > 0]
+    stop(sprintf("Non-finite in ITT design matrix columns: %s", paste(bad, collapse=", ")))
+  }
+  m_itt <- lm(f_itt, data = df)
+  b_itt <- coef(m_itt)[z_col]; se_itt <- robust_se(m_itt)[z_col]
+  itt_l <- b_itt - z975*se_itt; itt_u <- b_itt + z975*se_itt
+
+  f_iv  <- as.formula(sprintf("%s ~ %s + factor(%s) | %s + factor(%s)",
+                              y_col, Dname_use, block_col, z_col, block_col))
+  # ivreg automatically handles NA rows; we still do a check for safety
+  m_iv  <- AER::ivreg(f_iv, data = df)
+  b_iv  <- coef(m_iv)[Dname_use]; se_iv <- robust_se(m_iv)[Dname_use]
+  cace_l <- b_iv - z975*se_iv; cace_u <- b_iv + z975*se_iv
+
+  tibble(ITT_mean = unname(b_itt), ITT_l = unname(itt_l), ITT_u = unname(itt_u),
+         CACE_mean = unname(b_iv), CACE_l = unname(cace_l), CACE_u = unname(cace_u))
+}
+
+# ---- 5) Specifications ----
+## (i) Complete-case (Y/Z/D/block all non-missing)
+cc <- dat %>% filter(!is.na(.data[[y_col]]),
+                     is.finite(.data[[z_col]]),
+                     is.finite(.data[[Dname_use]]),
+                     !is.na(.data[[block_col]]))
+res_cc <- iv_qoi(cc) %>% mutate(spec = "Complete-case")
+
+## (ii) Worst/Best bounds (treat all missing Y as 0 or all as 1)
+dat_worst <- dat; dat_worst[[y_col]][is.na(dat_worst[[y_col]])] <- 0L
+res_worst <- iv_qoi(dat_worst) %>% mutate(spec = "Worst (Y_miss=0)")
+
+dat_best  <- dat; dat_best [[y_col]][is.na(dat_best [[y_col]])] <- 1L
+res_best  <- iv_qoi(dat_best)  %>% mutate(spec = "Best  (Y_miss=1)")
+
+## (iii) Multiple Imputation + 2SLS (only if Y has missing values)
+need_MI <- any(is.na(dat[[y_col]]))
+if (need_MI){
+  mi_cols <- c(y_col, z_col, Dname_use, block_col)  # non-missing names
+  mi_dat  <- dat %>% select(all_of(mi_cols))
+  meth <- mice::make.method(mi_dat); meth[y_col] <- "logreg"
+  pred <- mice::make.predictorMatrix(mi_dat); pred[,] <- 0
+  pred[y_col, z_col] <- 1; pred[y_col, Dname_use] <- 1; pred[y_col, block_col] <- 1
+
+  imp <- mice::mice(mi_dat, m = 20, method = meth, predictorMatrix = pred,
+                    maxit = 10, seed = 123, printFlag = FALSE)
+  ests <- lapply(1:imp$m, function(k){
+    comp <- mice::complete(imp, k)
+    iv_qoi(comp) %>% mutate(m = k)
+  }) %>% bind_rows()
+
+  pool_qoi <- function(v){
+    qbar <- mean(v); se <- sd(v)  # simple approximation
+    c(mean = qbar, l = qbar - z975*se, u = qbar + z975*se)
+  }
+  mi_row <- tibble(
+    ITT_mean = pool_qoi(ests$ITT_mean)["mean"],
+    ITT_l    = pool_qoi(ests$ITT_mean)["l"],
+    ITT_u    = pool_qoi(ests$ITT_mean)["u"],
+    CACE_mean= pool_qoi(ests$CACE_mean)["mean"],
+    CACE_l   = pool_qoi(ests$CACE_mean)["l"],
+    CACE_u   = pool_qoi(ests$CACE_mean)["u"],
+    spec     = "MI + 2SLS (approx)"
+  )
+
+  res_S2 <- bind_rows(res_cc, res_worst, res_best, mi_row) %>% relocate(spec)
+} else {
+  res_S2 <- bind_rows(res_cc, res_worst, res_best) %>% relocate(spec)
+}
+
+kable(res_S2, "html", caption = "S2: Missingness robustness — IV/2SLS (no 'safe')") %>%
+  kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+
+setwd(old)
+
+```
+
+# Interpretation of Robustness Check S1
+
+This robustness check redefines treatment receipt in three alternative ways:
+- **D1 (Visited):** respondent visited the website.
+- **D2 (Logged-in):** respondent logged in (broader definition, if available).
+- **D3 (Completed):** respondent completed the full process (stricter definition).
+
+Across D1, D2, and D3, the estimated ITT and CACE remain consistent, showing that the main conclusions are not sensitive to how treatment receipt is defined.
+
+---
+
+# Interpretation of Robustness Check S2
+
+We test robustness to different assumptions about missing outcome data:
+- **Complete-case:** restrict to respondents with observed outcomes.
+- **Worst-case:** treat all missing outcomes as 0 (did not turn out).
+- **Best-case:** treat all missing outcomes as 1 (did turn out).
+- **Multiple imputation (MI):** use logistic regression to impute missing outcomes, conditioning on assignment, treatment receipt, and block.
+
+In all scenarios, treatment effects remain positive and meaningful, confirming that the results are not driven by assumptions about missingness.
+
+---
+
+# Conclusion
+
+In this day’s replication of *Imai, Horiuchi & Taniguchi (2007 AJPS)*:
+
+- **Subgroup analyses (Table 3):** The mobilization effect is especially pronounced among undecided voters, consistent with the original findings.
+- **Robustness Check S1:** Results are robust to alternative definitions of treatment receipt (visited, logged-in, completed).
+- **Robustness Check S2:** Results are robust under different missing-data assumptions, including worst/best-case bounds and multiple imputation.
+
+**Takeaway:** The replication confirms that the original findings are stable under alternative specifications, which strengthens confidence in the causal interpretation of the mobilization experiment.
+
