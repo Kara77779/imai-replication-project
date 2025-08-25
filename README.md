@@ -39,15 +39,16 @@ The goal of this project is to **systematically replicate** the tables and figur
 ---
 
 ## 🔜 Next Steps
-- Replicate **appendix tables and robustness checks**.  
-- Conduct additional **subgroup analyses** beyond the published ones.  
-- Compare with alternative model specifications.  
-- Document challenges and solutions in replication (e.g., differences in random seeds, package updates).  
+- Replicate **Bayesian/SAFE models** presented in the appendix of the AJPS 2007 article.  
+- Extend robustness checks to include **sensitivity analyses under different assumptions** (e.g., Latent Ignorability, Non-Ignorable missingness).  
+- Generalize the current R scripts into a **replication template** (functions + workflow) that can be reused for other experiments.  
+- Write a short **methodological note** documenting challenges (e.g., column naming, missingness handling, random seeds) and how they were resolved.  
+
 
 ---
 
 ## 👩‍🎓 About Me
-My name is **Cara Li**, an incoming **MBA student at Harvard Business School (Class of 2027)**.  
+My name is **Cara Li**, an **MBA student at Harvard Business School (Class of 2027)**.  
 
 **Background**:
 - **B.A. in Economics (Statistics concentration), Peking University**  
