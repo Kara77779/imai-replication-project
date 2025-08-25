@@ -1,5 +1,5 @@
 ---
-title: "Week 1 — Replication Notes (Imai, Horiuchi & Taniguchi 2007 AJPS)"
+title: "Day 1 — Replication Notes (Imai, Horiuchi & Taniguchi 2007 AJPS)"
 author: "Cara"
 date: "`r Sys.Date()`"
 output:
