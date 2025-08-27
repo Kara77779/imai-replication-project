@@ -33,14 +33,14 @@ Systematically **replicate** the tables and figures in the AJPS 2007 paper and *
 - Findings are **stable** across reasonable definitions and missing-data assumptions.
 
 **Day 3 — Bayesian SAFE & Appendix Extensions**  
-- Optional **SAFE** run (if authors’ `safe()` is available); otherwise frequentist pipeline remains the benchmark.  
+-  **SAFE** run 
 - **Delta-adjusted missingness sensitivity** (LI/NI-style), beyond MAR/MI.  
 - **Subgroup runner** and **one-click pipeline** to reproduce S1/S2/Delta for any subgroup; fully reusable code.
 
 ---
 
 ## 👩‍🎓 About Me
-**Cara Li** — MBA, **Harvard Business School (Class of 2027)**
+**Cara Li** —  **Harvard Business School MBA (Class of 2027)**
 
 **Background**:  
 - B.A. in Economics (Statistics), Peking University  
