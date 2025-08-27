@@ -15,12 +15,8 @@ Systematically **replicate** the tables and figures in the AJPS 2007 paper and *
 
 ## 📂 Contents
 - `day1_report.Rmd` / `day1_report.html` — Baseline replication (Tables 2, 3, Figure 3).  
-  - [Day 1 HTML](path/to/day1_report.html)
 - `day2_report.Rmd` / `day2_report.html` — Robustness checks (S1, S2).  
-  - [Day 2 HTML](path/to/day2_report.html)
 - `day3_report.Rmd` / `day3_report.html` — Bayesian SAFE & Appendix extensions (delta sensitivity, subgroup runner, one-click pipeline).  
-  - [Day 3 HTML](path/to/day3_report.html)
-- `data/` — Replication data & auxiliary scripts (`data.txt`, optional `bayes.RData`, authors’ scripts if available).
 - `.gitignore` — Keep the repo clean (optionally ignore knitted HTML).
 
 ---
@@ -43,14 +39,8 @@ Systematically **replicate** the tables and figures in the AJPS 2007 paper and *
 
 ---
 
-## 🔜 Next Steps
-- If needed, run the **authors’ SAFE code** by dropping `bayes_safe.R`/`bayes.R` into `data/` (auto-sourced).
-- Publish HTML via **GitHub Pages** or **Releases** for easy viewing.
-
----
-
 ## 👩‍🎓 About Me
-**Cara Li** — Incoming MBA, **Harvard Business School (Class of 2027)**
+**Cara Li** — MBA, **Harvard Business School (Class of 2027)**
 
 **Background**:  
 - B.A. in Economics (Statistics), Peking University  
