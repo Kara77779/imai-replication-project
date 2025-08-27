@@ -9,64 +9,59 @@ American Journal of Political Science, 51(3): 669–687.**
 ---
 
 ## 🎯 Objective
-The goal of this project is to **systematically replicate** the tables and figures in the AJPS 2007 article and extend the analysis with additional robustness checks.
+Systematically **replicate** the tables and figures in the AJPS 2007 paper and **extend** the analysis with modern robustness and sensitivity tools.
 
 ---
 
 ## 📂 Contents
-- `day1_report.Rmd` / `day1_report.html`: Replication of baseline results (Tables 2, 3, and Figure 3).  
-- `day2_report.Rmd` / `day2_report.html`: Robustness checks (S1, S2).  
-- `data/`: Includes original replication data and R scripts (`table.R`, `table2.R`, `figure3.R`).  
-- `.gitignore`: Ensures only relevant replication files are tracked.  
+- `day1_report.Rmd` / `day1_report.html` — Baseline replication (Tables 2, 3, Figure 3).  
+  - [Day 1 HTML](path/to/day1_report.html)
+- `day2_report.Rmd` / `day2_report.html` — Robustness checks (S1, S2).  
+  - [Day 2 HTML](path/to/day2_report.html)
+- `day3_report.Rmd` / `day3_report.html` — Bayesian SAFE & Appendix extensions (delta sensitivity, subgroup runner, one-click pipeline).  
+  - [Day 3 HTML](path/to/day3_report.html)
+- `data/` — Replication data & auxiliary scripts (`data.txt`, optional `bayes.RData`, authors’ scripts if available).
+- `.gitignore` — Keep the repo clean (optionally ignore knitted HTML).
 
 ---
 
 ## ✅ Progress
 
-**Day 1**  
-- Reproduced core results from the AJPS 2007 article:  
-  - **Table 2** (ITT and CACE estimates)  
-  - **Table 3** (subgroup analyses)  
-  - **Figure 3** (heterogeneous treatment effects)  
-- Organized outputs in both `.Rmd` and `.html` formats for reproducibility.
+**Day 1 — Core results**  
+- Reproduced **Table 2** (ITT & CACE), **Table 3** (subgroup analyses), **Figure 3** (heterogeneous effects).  
+- Matches the main empirical results in the paper.
 
-**Day 2**  
-- Extended replication with robustness checks (Section 4 of the paper):  
-  - **S1**: Alternative definitions of treatment receipt (visited / logged-in / completed).  
-  - **S2**: Sensitivity to missing outcome assumptions (complete-case, worst-case, best-case, multiple imputation).  
-- Results confirm that the main findings are robust to both treatment receipt definitions and missingness assumptions.
+**Day 2 — Robustness checks (Section 4 / Appendix)**  
+- **S1:** Alternative treatment receipt definitions (D1=visited; D2/D3 if available).  
+- **S2:** Missingness robustness (complete-case, worst/best bounds, multiple imputation).  
+- Findings are **stable** across reasonable definitions and missing-data assumptions.
+
+**Day 3 — Bayesian SAFE & Appendix Extensions**  
+- Optional **SAFE** run (if authors’ `safe()` is available); otherwise frequentist pipeline remains the benchmark.  
+- **Delta-adjusted missingness sensitivity** (LI/NI-style), beyond MAR/MI.  
+- **Subgroup runner** and **one-click pipeline** to reproduce S1/S2/Delta for any subgroup; fully reusable code.
 
 ---
 
-## 🔜 Next Steps (Day 3 Plan)
-- Replicate **Bayesian/SAFE models** presented in the appendix.  
-- Extend robustness checks to include **alternative missing-data assumptions** (e.g., Latent Ignorability, Non-Ignorable missingness).  
-- Generalize the R scripts into a **replication template** for other experiments.  
-- Write a **methodological note** documenting challenges (column naming, missingness handling, random seeds) and solutions.  
-- Plan for **Day 4**: replicate and extend to more recent Imai papers, connecting classic methods (2007) to modern developments.
+## 🔜 Next Steps
+- If needed, run the **authors’ SAFE code** by dropping `bayes_safe.R`/`bayes.R` into `data/` (auto-sourced).
+- Publish HTML via **GitHub Pages** or **Releases** for easy viewing.
 
 ---
 
 ## 👩‍🎓 About Me
-My name is **Cara Li**, an incoming **MBA student at Harvard Business School (Class of 2027)**.  
+**Cara Li** — Incoming MBA, **Harvard Business School (Class of 2027)**
 
-**Background**:
-- **B.A. in Economics (Statistics concentration), Peking University**  
-- **Schwarzman Scholar, Tsinghua University**  
-- **Goldman Sachs**, Investment Banking  
-- **Zhipu AI**, Researcher (worked on AI agent and LLM applications)  
+**Background**:  
+- B.A. in Economics (Statistics), Peking University  
+- Schwarzman Scholar, Tsinghua University  
+- Goldman Sachs (IB), **Zhipu AI** (AI agent & LLM applications)
 
-I have a strong interest in **causal inference, experimental design, and the intersection of governance and technology**.  
-
-📎 LinkedIn: [https://www.linkedin.com/in/carali7769/](https://www.linkedin.com/in/carali7769/)
-
----
-
-## 📬 Contact
-For any questions or collaboration opportunities:  
-📧 qinghongli98@gmail.com  
+Interests: **causal inference, experimental design, governance & technology**.  
+🔗 LinkedIn: https://www.linkedin.com/in/carali7769/  
+📧 qinghongli98@gmail.com
 
 ---
 
 ## ⭐ Acknowledgment
-This replication is inspired by and builds directly on the pioneering work of **Professor Kosuke Imai**, whose contributions to causal inference and experimental methods have profoundly shaped political methodology and beyond.
+Inspired by the pioneering work of **Professor Kosuke Imai** on experimental methods and causal inference.
