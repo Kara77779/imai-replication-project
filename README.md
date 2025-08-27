@@ -45,7 +45,7 @@ Systematically **replicate** the tables and figures in the AJPS 2007 paper and *
 **Background**:  
 - B.A. in Economics (Statistics), Peking University  
 - Schwarzman Scholar, Tsinghua University  
-- Goldman Sachs (IB), **Zhipu AI** (AI agent & LLM applications)
+- Goldman Sachs (IB), Zhipu AI (AI agent & LLM applications)
 
 Interests: **causal inference, experimental design, governance & technology**.  
 🔗 LinkedIn: https://www.linkedin.com/in/carali7769/  
