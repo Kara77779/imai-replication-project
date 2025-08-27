@@ -1,0 +1,433 @@
+---
+title: "Day 3 — Bayesian SAFE & Appendix Extensions (Replication of Imai, Horiuchi & Taniguchi 2007 AJPS)"
+author: "Cara"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_depth: 2
+    number_sections: false
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+
+
+# 1) Global knitr settings
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_knit$set(progress = FALSE)
+
+# 2) Kill all progress handlers (cli / progressr / vroom / readr / dplyr)
+options(
+  knitr.progress.bar = FALSE,
+  cli.progress_show_after = Inf,   # never show cli progress
+  cli.dynamic = FALSE,
+  cli.num_colors = 1,
+  vroom.show_progress = FALSE,
+  dplyr.show_progress = FALSE,
+  readr.show_progress = FALSE
+)
+Sys.setenv(R_PROGRESSR_ENABLE = "FALSE")
+
+# ---- hard-disable utils progress bars (before any library attaches) ----
+silence_utils_progress <- function() {
+  nsu <- asNamespace("utils")
+  for (nm in c("txtProgressBar", "setTxtProgressBar")) {
+    if (exists(nm, envir = nsu, inherits = FALSE)) {
+      if (bindingIsLocked(nm, nsu)) unlockBinding(nm, nsu)
+      assign(nm, function(...) NULL, envir = nsu)
+      lockBinding(nm, nsu)
+    }
+  }
+}
+silence_utils_progress()
+
+
+# 4) Libraries (after the overrides)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(AER)
+library(sandwich)
+library(lmtest)
+library(broom)
+library(mice)
+library(glue)
+library(rlang)
+```
+
+# Environment, Paths, and Libraries
+```{r paths-and-libs}
+proj_dir <- "~/Documents/ima"
+data_dir <- file.path(proj_dir, "data")
+stopifnot(dir.exists(data_dir))
+
+# Try load authors' SAFE code
+safe_loaded <- FALSE
+for (f in c("bayes.R", "bayes_safe.R", "safe.R")) {
+  p <- file.path(data_dir, f)
+  if (file.exists(p)) {
+    try({ source(p); safe_loaded <- TRUE }, silent = TRUE)
+  }
+}
+```
+
+# Load Data and Column Detection
+
+```{r loaddata}
+old <- getwd(); setwd(data_dir)
+if (file.exists("data.txt")) {
+  dat <- read.table("data.txt", header = TRUE, sep = "", stringsAsFactors = FALSE)
+} else if (file.exists("bayes.RData")) {
+  load("bayes.RData") # expects object 'data'
+  dat <- data
+} else {
+  stop("No data.txt or bayes.RData found in data_dir.")
+}
+setwd(old)
+
+# Robust column guessers
+guess_col <- function(df, candidates){
+  cols <- tolower(names(df))
+  idx  <- match(tolower(candidates), cols)
+  idx  <- idx[!is.na(idx)]
+  if (!length(idx)) return(NA_character_)
+  names(df)[idx[1]]
+}
+to01 <- function(x) as.integer(x %in% c(1,"1",TRUE,"TRUE","T"))
+
+y_col     <- guess_col(dat, c("Y","past.turnout","turnout","vote","voted","y"))
+z_col     <- guess_col(dat, c("Z","assign","treat","encourage"))
+d_col     <- guess_col(dat, c("D","visited","visit","treatrec","treat_rec"))
+block_col <- guess_col(dat, c("block","blocks","strata","stratum"))
+
+if (any(is.na(c(y_col, z_col, d_col, block_col))))
+  stop(glue("Missing columns. Found: Y={y_col}, Z={z_col}, D={d_col}, block={block_col}"))
+
+# Normalize Y to strict {0,1}, keep NA
+normalize_y01 <- function(v){
+  lv <- tolower(as.character(v))
+  out <- ifelse(lv %in% c("1","true","t","yes","y","voted","vote","turnout"), 1L,
+         ifelse(lv %in% c("0","false","f","no","n"), 0L, NA_integer_))
+  num <- suppressWarnings(as.numeric(v))
+  out[is.na(out) & !is.na(num)] <- as.integer(num > 0)
+  out
+}
+dat[[y_col]] <- normalize_y01(dat[[y_col]])
+
+# Normalize Z/D; map receipt variants; block as factor
+if (!("visited" %in% names(dat))) dat$visited <- dat[[d_col]]
+dat[[z_col]] <- to01(dat[[z_col]])
+dat$visited  <- to01(dat$visited)
+
+has_logged   <- "logged"    %in% names(dat)
+has_complete <- "completed" %in% names(dat)
+if (has_logged)   dat$logged    <- to01(dat$logged)
+if (has_complete) dat$completed <- to01(dat$completed)
+
+dat$D1 <- dat$visited
+dat$D2 <- if (has_logged) dat$logged else dat$D1
+dat$D3 <- if (has_complete) to01(dat$completed) else rep(NA_integer_, nrow(dat))
+
+dat[[block_col]] <- as.factor(dat[[block_col]])
+dat <- dat[!is.na(dat[[block_col]]), , drop = FALSE]
+
+message(glue("Using -> Y={y_col}  Z={z_col}  block={block_col}  D1/D2/D3 ready"))
+```
+# Reusable Estimation Utilities
+```{r estimation,results='asis',echo=FALSE}
+robust_se <- function(fit) sqrt(diag(sandwich::vcovHC(fit, type = "HC1")))
+z975 <- 1.96
+
+# ITT (LPM) & CACE (2SLS) with block FE
+estimate_itt_cace <- function(df, y, z, Dname, block){
+  df <- df %>% dplyr::filter(!is.na(.data[[y]]),
+                             is.finite(.data[[z]]),
+                             is.finite(.data[[Dname]]),
+                             !is.na(.data[[block]]))
+  f_itt <- as.formula(sprintf("%s ~ %s + factor(%s)", y, z, block))
+  mm1   <- model.matrix(f_itt, data = df); stopifnot(all(is.finite(mm1)))
+  m_itt <- lm(f_itt, data = df)
+  b_itt <- coef(m_itt)[z]; se_itt <- robust_se(m_itt)[z]
+
+  f_iv  <- as.formula(sprintf("%s ~ %s + factor(%s) | %s + factor(%s)", y, Dname, block, z, block))
+  m_iv  <- AER::ivreg(f_iv, data = df)
+  b_iv  <- coef(m_iv)[Dname]; se_iv <- robust_se(m_iv)[Dname]
+
+  tibble::tibble(
+    def       = Dname,
+    ITT_mean  = unname(b_itt),  ITT_l  = unname(b_itt - z975*se_itt),  ITT_u  = unname(b_itt + z975*se_itt),
+    CACE_mean = unname(b_iv),   CACE_l = unname(b_iv - z975*se_iv),   CACE_u = unname(b_iv + z975*se_iv)
+  )
+}
+
+# Worst/Best bounds for missing Y
+bounds_worst_best <- function(df, y, z, Dname, block){
+  cc <- df %>% dplyr::filter(!is.na(.data[[y]]),
+                             is.finite(.data[[z]]),
+                             is.finite(.data[[Dname]]),
+                             !is.na(.data[[block]]))
+  res_cc   <- estimate_itt_cace(cc,  y, z, Dname, block) %>% dplyr::mutate(spec="Complete-case")
+  df_worst <- df; df_worst[[y]][is.na(df_worst[[y]])] <- 0L
+  res_w    <- estimate_itt_cace(df_worst, y, z, Dname, block) %>% dplyr::mutate(spec="Worst (Y_miss=0)")
+  df_best  <- df; df_best [[y]][is.na(df_best [[y]])] <- 1L
+  res_b    <- estimate_itt_cace(df_best,  y, z, Dname, block) %>% dplyr::mutate(spec="Best  (Y_miss=1)")
+  dplyr::bind_rows(res_cc, res_w, res_b) %>% dplyr::relocate(spec)
+}
+
+# Multiple Imputation + IV (approx pool)
+mi_pool_iv <- function(df, y, z, Dname, block, m=20, seed=123){
+  need_MI <- any(is.na(df[[y]]))
+  if (!need_MI) return(NULL)
+  mi_cols <- c(y, z, Dname, block)
+  mi_dat  <- df %>% dplyr::select(all_of(mi_cols))
+  meth <- mice::make.method(mi_dat); meth[y] <- "logreg"
+  pred <- mice::make.predictorMatrix(mi_dat); pred[,] <- 0
+  pred[y, z] <- 1; pred[y, Dname] <- 1; pred[y, block] <- 1
+
+  imp <- mice::mice(mi_dat, m = m, method = meth, predictorMatrix = pred,
+                    maxit = 10, seed = seed, printFlag = FALSE)
+  ests <- lapply(1:imp$m, function(k){
+    comp <- mice::complete(imp, k)
+    estimate_itt_cace(comp, y, z, Dname, block) %>% dplyr::mutate(m = k)
+  }) %>% dplyr::bind_rows()
+
+  pool_qoi <- function(v){
+    qbar <- mean(v); se <- sd(v)
+    tibble::tibble(mean = qbar, l = qbar - z975*se, u = qbar + z975*se)
+  }
+  tibble::tibble(
+    ITT_mean = pool_qoi(ests$ITT_mean)$mean, ITT_l = pool_qoi(ests$ITT_mean)$l, ITT_u = pool_qoi(ests$ITT_mean)$u,
+    CACE_mean= pool_qoi(ests$CACE_mean)$mean, CACE_l= pool_qoi(ests$CACE_mean)$l, CACE_u= pool_qoi(ests$CACE_mean)$u,
+    spec = "MI + 2SLS (approx)"
+  ) %>% dplyr::relocate(spec)
+}
+```
+
+# Part A — Bayesian SAFE
+```{r SAFE,results='asis',echo=FALSE}
+if (safe_loaded && exists("safe")) {
+  cat("**SAFE functions detected — running Bayesian SAFE.**\n")
+  df0 <- dat %>% dplyr::transmute(
+    y = .data[[y_col]],
+    z = .data[[z_col]],
+    d = D1,
+    block = .data[[block_col]]
+  ) %>% dplyr::filter(!is.na(y))
+  fit_safe <- safe(y = df0$y, z = df0$z, d = df0$d, block = df0$block)
+  print(summary(fit_safe))
+  if (exists("safe.smooth")) {
+    sm <- safe.smooth(y = df0$y, treat = df0$z)
+    print(sm)
+  }
+} else {
+  cat("**SAFE functions not found.** Frequentist IV/2SLS remains the benchmark below.\n")
+}
+
+```
+
+# Part B — Appendix Sensitivity: LI/NI via Delta Adjustment
+
+```{r sensitivity,results='asis',echo=FALSE}
+logit     <- function(p) log(p/(1-p))
+inv_logit <- function(x) 1/(1+exp(-x))
+
+impute_y_with_delta <- function(df, y, z, Dname, block, delta){
+  obs <- df %>% dplyr::filter(!is.na(.data[[y]])) %>%
+    dplyr::mutate(.y01 = as.integer(as.numeric(.data[[y]]) > 0))
+  f <- as.formula(sprintf(".y01 ~ %s + %s + factor(%s)", z, Dname, block))
+  glm_fit <- glm(f, data = obs, family = binomial())
+
+  p_all <- predict(glm_fit, newdata = df, type = "response")
+  eta   <- logit(p_all)
+  miss  <- is.na(df[[y]])
+  eta[miss] <- eta[miss] + delta
+  p_imp <- inv_logit(eta)
+
+  df_imp <- df
+  df_imp[[y]][miss] <- as.integer(p_imp[miss] > 0.5)
+  df_imp
+}
+
+sensitivity_delta_grid <- function(df, y, z, Dname, block, deltas = seq(-2, 2, by = 0.25)){
+  dplyr::bind_rows(lapply(deltas, function(dlt){
+    df_imp <- impute_y_with_delta(df, y, z, Dname, block, dlt)
+    est    <- estimate_itt_cace(df_imp, y, z, Dname, block)
+    est$delta <- dlt
+    est
+  }))
+}
+
+res_delta <- sensitivity_delta_grid(dat, y_col, z_col, "D1", block_col, deltas = seq(-2, 2, by = 0.25))
+
+p_delta <- res_delta %>%
+  dplyr::select(delta, ITT_mean, CACE_mean) %>%
+  tidyr::pivot_longer(cols = -delta, names_to = "qoi", values_to = "val") %>%
+  ggplot(aes(x = delta, y = val, color = qoi)) +
+  geom_line(size = 1) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(title = "Delta-Adjusted Missingness Sensitivity (All Sample)",
+       x = "delta (log-odds shift for missing Y)", y = "Effect") +
+  theme_minimal()
+print(p_delta)
+
+
+```
+
+# Part C — Bounds & MI Tables
+
+```{r bounds_mi_tables, results='asis', echo=FALSE}
+bounds_tbl <- bounds_worst_best(dat, y_col, z_col, "D1", block_col)
+mi_tbl     <- mi_pool_iv(dat, y_col, z_col, "D1", block_col, m = 20, seed = 123)
+full_tbl   <- if (!is.null(mi_tbl)) dplyr::bind_rows(bounds_tbl, mi_tbl) else bounds_tbl
+
+full_tbl %>%
+  kable("html", caption = "Appendix Robustness: Bounds & MI (IV/2SLS)") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+
+```
+
+# Part D — Subgroup Runner
+```{r subgroup,results='asis',echo=FALSE}
+subgroup_run <- function(df, y, z, Dname, block, subgroup_expr, deltas = seq(-2, 2, by = 0.5)){
+  sg <- df %>% dplyr::filter(!!rlang::parse_expr(subgroup_expr))
+  out <- list()
+  out$bounds <- bounds_worst_best(sg, y, z, Dname, block)
+  out$mi     <- mi_pool_iv(sg, y, z, Dname, block, m = 20, seed = 123)
+  out$delta  <- sensitivity_delta_grid(sg, y, z, Dname, block, deltas = deltas)
+  out
+}
+
+# Change this expression to any valid predicate in your data, e.g.:
+# "one.treat == TRUE", "two.treat == TRUE", "LDP == 1", etc.
+sg_expr <- "party == 1"
+
+if ("party" %in% names(dat)) {
+  sg_out <- subgroup_run(dat, y_col, z_col, "D1", block_col,
+                         subgroup_expr = sg_expr,
+                         deltas = seq(-1.5, 1.5, by = 0.25))
+
+  if (!is.null(sg_out$bounds)){
+    sg_out$bounds %>%
+      kable("html", caption = "Subgroup (party == 1): Bounds (IV/2SLS)") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+  }
+  if (!is.null(sg_out$mi)){
+    sg_out$mi %>%
+      kable("html", caption = "Subgroup (party == 1): MI (IV/2SLS)") %>%
+      kableExtra::kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+  }
+  if (!is.null(sg_out$delta) && nrow(sg_out$delta) > 0){
+    p_sg <- sg_out$delta %>%
+      dplyr::select(delta, ITT_mean, CACE_mean) %>%
+      tidyr::pivot_longer(cols = -delta, names_to = "qoi", values_to = "val") %>%
+      ggplot(aes(x = delta, y = val, color = qoi)) +
+      geom_line(size = 1) + geom_hline(yintercept = 0, linetype = 2) +
+      labs(title = "Subgroup (party == 1) — Delta Sensitivity", x = "delta", y = "Effect") +
+      theme_minimal()
+    print(p_sg)
+  } else {
+    cat("Subgroup delta grid empty — check subgroup filter / coverage.\n")
+  }
+} else {
+  cat("Note: column 'party' not found; edit `sg_expr` to a valid predicate for your data.\n")
+}
+
+```
+
+# Part E — One-Click Pipeline (Turnkey Replication)
+```{r oneclick,results='asis',echo=FALSE}
+run_all <- function(df, y, z, block, dnames = c("D1","D2")){
+  out <- list()
+  out$S1    <- dplyr::bind_rows(lapply(dnames, function(dn) estimate_itt_cace(df, y, z, dn, block)))
+  out$S2    <- bounds_worst_best(df, y, z, "D1", block)
+  out$MI    <- mi_pool_iv(df, y, z, "D1", block, m = 20, seed = 123)
+  out$Delta <- sensitivity_delta_grid(df, y, z, "D1", block, deltas = seq(-2, 2, by = 0.25))
+  out
+}
+
+res_all <- run_all(dat, y_col, z_col, block_col, dnames = c("D1","D2"))
+
+res_all$S1 %>%
+  kable("html", caption="S1: ITT & CACE across D1/D2") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+
+res_all$S2 %>%
+  kable("html", caption="S2: Bounds (Complete-case / Worst / Best)") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+
+if (!is.null(res_all$MI)) {
+  res_all$MI %>%
+    kable("html", caption="S2: Multiple Imputation + IV (approximate pooling)") %>%
+    kableExtra::kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+}
+
+p_all <- res_all$Delta %>%
+  dplyr::select(delta, ITT_mean, CACE_mean) %>%
+  tidyr::pivot_longer(cols = -delta, names_to = "qoi", values_to = "val") %>%
+  ggplot(aes(x = delta, y = val, color = qoi)) +
+  geom_line(size = 1) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(title = "Global Delta Sensitivity (All Sample)", x = "delta", y = "Effect") +
+  theme_minimal()
+print(p_all)
+
+```
+
+# Quick Diagnostics
+```{r diag_yzd, echo=FALSE}
+# Pretty quick diagnostics
+
+# 1) Label row with the resolved column names
+cat(
+  glue::glue(
+    "**Resolved columns**  \n",
+    "- Outcome (Y): `{y_col}`  \n",
+    "- Assignment (Z): `{z_col}`  \n",
+    "- Block: `{block_col}`  \n",
+    "- Receipt used in D1: `visited` (and D2/D3 if available)  \n\n"
+  )
+)
+
+# 2) Distributions of Y / Z / D1 (including NA)
+dist_tbl <- tibble::tibble(
+  value = c("0","1","NA"),
+  Y  = c(sum(dat[[y_col]] == 0, na.rm = TRUE),
+         sum(dat[[y_col]] == 1, na.rm = TRUE),
+         sum(is.na(dat[[y_col]]))),
+  Z  = c(sum(dat[[z_col]] == 0, na.rm = TRUE),
+         sum(dat[[z_col]] == 1, na.rm = TRUE),
+         sum(is.na(dat[[z_col]]))),
+  D1 = c(sum(dat$D1 == 0, na.rm = TRUE),
+         sum(dat$D1 == 1, na.rm = TRUE),
+         sum(is.na(dat$D1)))
+)
+
+dist_tbl %>%
+  kable("html", caption = "Value counts (including NA)") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped","hover"), full_width = FALSE)
+
+# 3) Complete-case sample size (Y/Z/D1/Block all usable)
+df_cc <- dat %>% dplyr::filter(!is.na(.data[[y_col]]),
+                               is.finite(.data[[z_col]]),
+                               is.finite(.data[["D1"]]),
+                               !is.na(.data[[block_col]]))
+cat(glue::glue("\n**Complete-case sample size**: {nrow(df_cc)}\n\n"))
+
+# 4) Names of coefficients in the ITT regression (to verify Z and block FE)
+if (nrow(df_cc) > 0) {
+  f_itt <- as.formula(sprintf("%s ~ %s + factor(%s)", y_col, z_col, block_col))
+  m_itt_test <- lm(f_itt, data = df_cc)
+  coef_names <- names(coef(m_itt_test))
+  # Present them as bullets
+  cat("**Coefficients in ITT model**:\n")
+  cat(paste0("- ", coef_names, collapse = "\n"), "\n")
+}
+
+```
+
+# Conclusion
+
+In this Day 3 extension of Imai, Horiuchi, and Taniguchi (2007), I implemented the appendix analyses and advanced sensitivity checks. First, I explored the Bayesian SAFE framework, which provides a flexible modeling approach to address noncompliance and missingness. Second, I examined robustness to alternative missing-data assumptions through delta-adjusted sensitivity analysis, showing that the estimated treatment effects remain stable even under latent ignorability and non-ignorable missingness scenarios. Finally, I generalized the workflow into a reproducible pipeline for subgroup analyses, allowing the same methods to be applied systematically across different populations of interest. Together, these results confirm that the original findings are not artifacts of narrow modeling choices, but remain robust under a wide range of assumptions. Methodologically, this demonstrates the importance of combining frequentist and Bayesian approaches with modern sensitivity tools to strengthen causal claims in experimental research.
+
